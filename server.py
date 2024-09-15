@@ -1,23 +1,27 @@
-from flask import Flask, request, redirect, session
+from flask import Flask, request, redirect, session, send_file
 from database import *
+import os
 
 app = Flask(__name__)
 
 app.secret_key = "SECRET_KEY"
 
+#파일업로드 및 다운로드 
+UPLOAD_FOLDER = "uploads"
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 init_db()
-
 
 def template(contents, content, id=None):
     contextUI = ""
     userSession = ""
-    if id != None:
+    if id is not None:
         contextUI = f"""
             <li><a href="/update/{id}/">update</a></li>
             <li><form action="/delete/{id}/" method="POST"><input type="submit" value="delete"></form></li>
         """
-    # 로그인 상태에 따라 버튼 표시
     if "user_id" in session:
         userSession = """
             <li><a href="/logout/">logout</a></li>
@@ -31,27 +35,34 @@ def template(contents, content, id=None):
 
     return f"""<!doctype html>
     <html>
+        <head>
+            <link rel="stylesheet" type="text/css" href="/static/style.css">
+            <title>4th_week</title>
+        </head>
         <body>
-            <h1><a href="/">WEB</a></h1>
-            <form action="/search/" method="POST">
-                <p><input type="text" name="keyword" placeholder="search"></p>
-                <p><input type="submit" value="search"></p>
-            </form>
-            <ul>
-                {userSession}
-            </ul>
-            <h2>Contents</h2>
-            <ol>
-                {contents}
-            </ol>
-            {content}
-            <ul>
-                <li><a href="/create/">create</a></li>
-                {contextUI}
-            </ul>
+            <nav>
+                <h1><a href="/">WonJae's website</a></h1>
+                <form action="/search/" method="POST" class="search-form">
+                    <input type="text" name="keyword" placeholder="Search">
+                    <input type="submit" value="Search">
+                </form>
+                <ul>
+                    {userSession}
+                </ul>
+            </nav>
+            <div class="container">
+                <h2>Contents</h2>
+                <ul>{contents}</ul>
+                {content}
+                <ul>
+                    <li><a href="/create/">create</a></li>
+                    {contextUI}
+                </ul>
+            </div>
         </body>
     </html>
     """
+
 
 
 def getContents():
@@ -66,7 +77,7 @@ def getContents():
 
 @app.route("/")
 def index():
-    return template(getContents(), "<h2>Welcome</h2>Hello, WEB")
+    return template(getContents(), "<h2>빡공팟_4주차과제</h2>orm을 쓰지 않고 처음부터 새로 만들었습니다.")
 
 
 @app.route("/read/<int:id>/")
@@ -86,9 +97,10 @@ def read(id):
 def create():
     if request.method == "GET":
         content = """
-            <form action="/create/" method="POST">
+            <form action="/create/" method="POST" enctype="multipart/form-data">
                 <p><input type="text" name="title" placeholder="title"></p>
                 <p><textarea name="body" placeholder="body"></textarea></p>
+                <p><input type="file" name="file"></p>
                 <p><input type="submit" value="create"></p>
             </form>
         """
@@ -96,7 +108,15 @@ def create():
     elif request.method == "POST":
         title = request.form["title"]
         body = request.form["body"]
-        add_topic(title, body)
+        file = request.files["file"]
+        
+        file_path = None
+        if file and file.filename:
+            filename = file.filename
+            file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file.save(file_path) 
+
+        add_topic(title, body, file_path)
         topics = get_topics()
         new_topic = topics[-1]
         url = "/read/" + str(new_topic["id"]) + "/"
@@ -119,6 +139,7 @@ def update(id):
                 <p><input type="text" name="title" placeholder="title" value="{title}"></p>
                 <p><textarea name="body" placeholder="body">{body}</textarea></p>
                 <p><input type="submit" value="update"></p>
+                <a href="/download/{id}">Download file</a>
             </form>
         """
         return template(getContents(), content)
@@ -168,7 +189,6 @@ def sign_in():
         school = request.form["school"]
         add_user(user_id, username, password, school)
         return redirect("/")
-
 
 @app.route("/login/", methods=["GET", "POST"])
 def login():
@@ -234,5 +254,10 @@ def update_user():
         update_userInfo(session["user_id"], username, password, school)
         return redirect("/my_page/")
 
+@app.route("/download/<int:id>/")
+def download(id):
+    filepath = f"uploads/sample_file.txt"  # 예시로 파일 경로 지정
+    return send_file(filepath, as_attachment=True)
 
 app.run(debug=True)
+
